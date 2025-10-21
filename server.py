@@ -542,7 +542,7 @@ def convert_anthropic_to_litellm(anthropic_request: MessagesRequest) -> Dict[str
     # Cap max_tokens for OpenAI models to their limit of 16384
     max_tokens = anthropic_request.max_tokens
     if anthropic_request.model.startswith("openai/") or anthropic_request.model.startswith("gemini/"):
-        max_tokens = min(max_tokens, 16384)
+        max_tokens = min(max_tokens, 524288)
         logger.debug(f"Capping max_tokens to 16384 for OpenAI/Gemini model (original value: {anthropic_request.max_tokens})")
     
     # Create LiteLLM request dict
