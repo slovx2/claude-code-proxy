@@ -1,16 +1,10 @@
-FROM python:latest
+FROM ghcr.io/astral-sh/uv:bookworm-slim
 
-WORKDIR /claude-code-proxy
+# Copy the project into the image
+ADD . /app
 
-# Copy package specifications
-COPY pyproject.toml uv.lock ./
+# Sync the project into a new environment, asserting the lockfile is up to date
+WORKDIR /app
+RUN uv sync --locked
 
-# Install uv and project dependencies
-RUN pip install --upgrade uv && uv sync --locked
-
-# Copy project code to current directory
-COPY . .
-
-# Start the proxy
-EXPOSE 8082
-CMD uv run uvicorn server:app --host 0.0.0.0 --port 8082 --reload
+CMD ["uv", "run", "start_proxy.py"]
