@@ -1,4 +1,4 @@
-FROM ghcr.io/astral-sh/uv:bookworm-slim
+FROM python:latest
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends build-essential cargo git && \
@@ -8,7 +8,8 @@ WORKDIR /app
 
 COPY pyproject.toml uv.lock ./
 
-RUN uv sync --locked
+RUN pip install --no-cache-dir --upgrade pip uv && \
+    uv sync --locked
 
 COPY . .
 
