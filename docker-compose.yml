@@ -7,7 +7,3 @@ services:
     restart: unless-stopped
     env_file: .env
     network_mode: host
-    environment:
-      - HTTP_PROXY=http://host.docker.internal:10808
-      - HTTPS_PROXY=http://host.docker.internal:10808
-      - NO_PROXY=localhost,127.0.0.1
