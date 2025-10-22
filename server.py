@@ -1,10 +1,11 @@
+from __future__ import annotations
+
 from fastapi import FastAPI, Request, HTTPException
 import uvicorn
 import logging
 import json
 from pydantic import BaseModel, Field, field_validator
 from typing import List, Dict, Any, Optional, Union, Literal
-import httpx
 import os
 from fastapi.responses import JSONResponse, StreamingResponse
 import litellm
@@ -114,6 +115,39 @@ GEMINI_MODELS = [
     "gemini-2.5-flash",
     "gemini-2.5-pro"
 ]
+
+
+def _anthropic_image_to_openai(block: Any) -> Optional[Dict[str, Any]]:
+    """将Anthropic图片块转换为OpenAI兼容的image_url结构。"""
+    source = getattr(block, "source", None)
+    if source is None and isinstance(block, dict):
+        source = block.get("source")
+    if not isinstance(source, dict):
+        return None
+
+    source_type = source.get("type")
+    media_type = source.get("media_type") or source.get("mediaType") or "image/jpeg"
+    detail = source.get("detail")
+
+    if source_type == "base64":
+        data_value = source.get("data")
+        if not data_value:
+            return None
+        image_payload: Dict[str, Any] = {
+            "url": f"data:{media_type};base64,{data_value}"
+        }
+    elif source_type in {"url", "image_url"}:
+        url_value = source.get("url") or source.get("image_url")
+        if not url_value:
+            return None
+        image_payload = {"url": url_value}
+    else:
+        return None
+
+    if detail:
+        image_payload["detail"] = detail
+
+    return {"type": "image_url", "image_url": image_payload}
 
 # Helper function to clean schema for Gemini
 def clean_gemini_schema(schema: Any) -> Any:
@@ -504,7 +538,11 @@ def convert_anthropic_to_litellm(anthropic_request: MessagesRequest) -> Dict[str
                         if block.type == "text":
                             processed_content.append({"type": "text", "text": block.text})
                         elif block.type == "image":
-                            processed_content.append({"type": "image", "source": block.source})
+                            image_block = _anthropic_image_to_openai(block)
+                            if image_block:
+                                processed_content.append(image_block)
+                            else:
+                                processed_content.append({"type": "text", "text": "[无法解析的图片]"})
                         elif block.type == "tool_use":
                             # Handle tool use blocks if needed
                             processed_content.append({
@@ -536,6 +574,21 @@ def convert_anthropic_to_litellm(anthropic_request: MessagesRequest) -> Dict[str
                                 processed_content_block["content"] = [{"type": "text", "text": ""}]
                                 
                             processed_content.append(processed_content_block)
+                    elif isinstance(block, dict):
+                        block_type = block.get("type")
+                        if block_type == "text":
+                            processed_content.append({"type": "text", "text": block.get("text", "")})
+                        elif block_type == "image":
+                            image_block = _anthropic_image_to_openai(block)
+                            if image_block:
+                                processed_content.append(image_block)
+                            else:
+                                processed_content.append({"type": "text", "text": "[无法解析的图片]"})
+                        else:
+                            try:
+                                processed_content.append({"type": "text", "text": json.dumps(block, ensure_ascii=False)})
+                            except Exception:
+                                processed_content.append({"type": "text", "text": str(block)})
                 
                 messages.append({"role": msg.role, "content": processed_content})
     
@@ -1111,7 +1164,7 @@ async def create_message(
             clean_model = clean_model[len("openai/"):]
         
         logger.debug(f"📊 PROCESSING REQUEST: Model={request.model}, Stream={request.stream}")
-        
+
         # Convert Anthropic request to LiteLLM format
         litellm_request = convert_anthropic_to_litellm(request)
         
