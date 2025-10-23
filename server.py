@@ -80,6 +80,7 @@ app = FastAPI()
 
 # Get API keys from environment
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
+ANTHROPIC_AUTH_TOKEN = os.environ.get("ANTHROPIC_AUTH_TOKEN")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
@@ -153,9 +154,21 @@ def _anthropic_image_to_openai(block: Any) -> Optional[Dict[str, Any]]:
 def clean_gemini_schema(schema: Any) -> Any:
     """Recursively removes unsupported fields from a JSON schema for Gemini."""
     if isinstance(schema, dict):
-        # Remove specific keys unsupported by Gemini tool parameters
+        # Remove/transform字段来适配Gemini函数签名
         schema.pop("additionalProperties", None)
         schema.pop("default", None)
+
+        exclusive_min = schema.pop("exclusiveMinimum", None)
+        if exclusive_min is not None:
+            current_min = schema.get("minimum")
+            if current_min is None or exclusive_min > current_min:
+                schema["minimum"] = exclusive_min
+
+        exclusive_max = schema.pop("exclusiveMaximum", None)
+        if exclusive_max is not None:
+            current_max = schema.get("maximum")
+            if current_max is None or exclusive_max < current_max:
+                schema["maximum"] = exclusive_max
 
         # Check for unsupported 'format' in string types
         if schema.get("type") == "string" and "format" in schema:
@@ -1144,6 +1157,13 @@ async def create_message(
     raw_request: Request
 ):
     try:
+        # headers = raw_request.headers
+        # auth_token = headers.get("authorization") or headers.get("anthropic-api-key")
+        # logger.warning(
+        #     "Incoming /v1/messages headers => auth_token: %s",
+        #     auth_token,
+        # )
+
         # print the body here
         body = await raw_request.body()
     
